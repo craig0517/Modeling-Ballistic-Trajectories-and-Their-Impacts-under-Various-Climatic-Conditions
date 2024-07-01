@@ -1,0 +1,173 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+
+g = 9.8  # 重力常數
+
+print('------------------預設條件------------------')
+print('重力常數 g = 9.8 (地球)')
+# 輸入彈道條件
+print("------------------彈丸條件------------------")
+u = float(input("請輸入初始速度 Initial velocity（m/s）："))  # 初始速度
+theta = float(input("請輸入射角 Angle（degree）："))  # 角度（單位：度）
+m = float(input("請輸入彈丸質量 Mass（kg）："))  # 彈丸質量
+t_interval = float(input("請輸入時間間隔 Time step (sec）："))
+
+# 將角度轉換為弧度
+theta = np.deg2rad(theta)  # 將角度轉換為弧度
+
+
+def calculate_drag_coefficient(diameter, temperature, pressure, wind_speed):
+    # 轉換溫度為絕對溫度
+    temperature_K = temperature + 273.15
+
+    # 計算空氣密度 (ρ)
+    air_density = (pressure * 100) / (8.314 * temperature_K)
+
+    # 計算動力黏度 (μ)
+    dynamic_viscosity = 1.8 * 10**-5  # kg/(m·s)
+
+    # 計算雷諾數 (Re)
+    characteristic_length = diameter / 100  # 將直徑轉換為米
+    reynolds_number = (air_density * wind_speed * characteristic_length) / dynamic_viscosity
+
+    # 估算空氣阻力係數 (Cd)
+    air_resistance_coefficient = 24 / reynolds_number
+
+    return air_density, air_resistance_coefficient
+
+
+def choose_the_weather():
+    area = float(input("請輸入彈丸橫截面積（m^2）："))  # 物體的受阻面積
+    diameter = (area/3.14)**(0.5)
+
+    print('\n------------------------------------------------------------')
+    print('1. 颱風(莫拉克) \n測站：466990_花蓮 \n觀測時間：2009-08-07 0900(UTC+8)')
+    print('\n2. 寒潮爆發 \n測站：466920_臺北 \n觀測時間：2020-12-30 0900(UTC+8)')
+    print('\n3. 夏季(焚風) \n測站：467540_大武 \n觀測時間：2020-07-25 0900(UTC+8)')
+    w = int(input('選擇天氣類型：'))
+
+    if w == 1:
+        # 氣象資料
+        temperature = 31.0    # （度c）
+        pressure = 968.8      # （百帕）
+        wind_speed = 15.5     # （公尺/秒）
+        air_density, cd = calculate_drag_coefficient(diameter, temperature, pressure, wind_speed)  # 呼叫函式計算空氣阻力係數
+
+    elif w == 2:
+        # 氣象資料
+        temperature = 13.2    # （度c）
+        pressure = 1023.6     # （百帕）
+        wind_speed = 2.5      # （公尺/秒）
+        air_density, cd = calculate_drag_coefficient(diameter, temperature, pressure, wind_speed)  # 呼叫函式計算空氣阻力係數
+
+    elif w == 3:
+        # 氣象資料
+        temperature = 35.2    # （度c）
+        pressure = 1006.1     # （百帕）
+        wind_speed = 3.4      # （公尺/秒）
+        air_density, cd = calculate_drag_coefficient(diameter, temperature, pressure, wind_speed)  # 呼叫函式計算空氣阻力係數
+
+    return area, w, air_density, cd  # 透過函式選定cd
+
+
+area, w, air_density, cd = choose_the_weather()  # 空氣密度、阻力係數
+
+# 計算總飛行時間
+t_flight = 2 * (u * np.sin(theta)) / (g * m)
+# 計算點的數量
+num_points = int(t_flight / t_interval) + 1
+# 建立時間值的陣列
+t = np.linspace(0, t_flight, num_points)
+
+# 計算在 x 和 y 方向上的拋體運動
+x = np.zeros_like(t)
+y = np.zeros_like(t)
+vx = u * np.cos(theta)
+vy = u * np.sin(theta)
+
+
+for i, time in enumerate(t):
+    # 計算阻力
+    drag_force = 0.5 * air_density * cd * area * (vx**2 + vy**2)
+
+    # 計算重力
+    weight = m * g
+
+    # 計算加速度
+    ax = (-drag_force * vx / (u * area)) / m
+    ay = (-weight - drag_force * vy / (u * area)) / m
+
+    # 更新速度
+    vx += ax * (t[i] - t[i - 1]) if i > 0 else ax * t[i]
+    vy += ay * (t[i] - t[i - 1]) if i > 0 else ay * t[i]
+    # 更新位置
+    x[i] = vx * t[i]
+    y[i] = vy * t[i] - 0.5 * g * t[i]**2
+
+
+# 建立圖形和軸
+fig, ax = plt.subplots()
+
+# 將拋體軌跡繪製成點
+points, = ax.plot([], [], 'o', color='r', markersize=2)
+
+
+# 設定動畫的範圍
+xmin = x[0]
+ymin = y[0]
+xmax = max(x)
+ymax = max(y)
+xysmall = min(xmax, ymax)
+maxscale = max(xmax, ymax)
+
+# 建立起點的圓形圖案
+circle_radius = 0.3  # 調整圓形的半徑
+circle = plt.Circle((xmin, ymin), radius=circle_radius)
+ax.add_patch(circle)
+
+# 初始化動畫
+def init():
+    points.set_data([], [])  # 清空點的資料
+    circle.center = (xmin, ymin)  # 重設圓形圖案的位置
+    circle.radius = circle_radius  # 調整圓形的半徑
+    return points, circle
+
+
+# 動畫的更新函數
+def update(num, x, y, points, circle):
+    # 更新點的資料
+    points.set_data(x[:num], y[:num])
+
+    # 更新圓形圖案的位置
+    circle.center = x[num], y[num]
+
+    # 動態設定座標軸的範圍
+    points.axes.axis([0, max(np.append(x, y)), 0, max(np.append(x, y))])
+
+    return points, circle
+
+
+# 建立動畫
+ani = animation.FuncAnimation(fig, update, len(x), fargs=[x, y, points, circle],
+                              init_func=init, interval=25, blit=True)
+
+# 將動畫儲存為 GIF 檔案
+ani.save('projectile.gif')
+
+# 顯示圖形
+plt.xlabel('Distance(m)')
+plt.ylabel('Height(m)')
+title = ''
+if w == 1:
+    title = 'Projectile Trajectory With Air Resistance(Typhoon)'
+elif w == 2:
+    title = 'Projectile Trajectory With Air Resistance(Cold Wave)'
+else:
+    title = 'Projectile Trajectory With Air Resistance(Foehn Wind)'
+
+plt.title(title)
+plt.show()
+
+
+
